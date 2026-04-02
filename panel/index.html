@@ -222,6 +222,16 @@
         <button class="lang-btn"        id="lang-asr-zh" onclick="setLang('asr','zh')">中文</button>
       </div>
     </div>
+    <div class="card">
+      <div class="card-label">输出模式</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="bilingual-asr" style="width:15px;height:15px;accent-color:var(--accent)">
+          <span>双语字幕（原语言 + English 翻译）</span>
+        </label>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">开启后将运行两次推理，耗时约为单语的 2 倍</div>
+    </div>
     <button class="btn-process" id="btn-asr" onclick="runASR()">开始识别 →</button>
     <div class="proc-status hidden" id="status-asr"></div>
   </div>
@@ -268,6 +278,13 @@
       <div class="lang-row">
         <button class="lang-btn active" id="lang-batch-en" onclick="setLang('batch','en')">English</button>
         <button class="lang-btn"        id="lang-batch-zh" onclick="setLang('batch','zh')">中文</button>
+      </div>
+      <div id="bilingualBatchWrap" style="margin-top:14px">
+        <div class="card-label">输出模式</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-size:13px">
+          <input type="checkbox" id="bilingual-batch" style="width:15px;height:15px;accent-color:var(--accent)">
+          <span>双语字幕（原语言 + English 翻译）</span>
+        </label>
       </div>
     </div>
 
@@ -423,9 +440,12 @@ function showResult(srt, outputFile) {
 async function runASR() {
   const file = fileState.asr; if (!file) { alert('请先选择音频文件'); return; }
   const btn = document.getElementById('btn-asr'); btn.disabled = true; hideResult();
-  showStatus('asr','','正在识别，请稍候...',true);
-  lastFileName = file.name.replace(/\.[^.]+$/,'') + '.srt';
+  const bilingual = document.getElementById('bilingual-asr').checked;
+  const suffix = bilingual ? '_bilingual' : '';
+  showStatus('asr','', bilingual ? '正在识别（双语），请稍候...' : '正在识别，请稍候...',true);
+  lastFileName = file.name.replace(/\.[^.]+$/,'') + suffix + '.srt';
   const fd = new FormData(); fd.append('audio',file); fd.append('language',langState.asr);
+  if (bilingual) fd.append('bilingual','true');
   try {
     const r = await fetch(API+'/transcribe',{method:'POST',body:fd});
     const d = await r.json(); if (!r.ok) throw new Error(d.detail||r.statusText);
@@ -468,6 +488,8 @@ function setBatchMode(mode) {
   ['asr','align'].forEach(m =>
     document.getElementById(`btab-${m}`).className = 'sub-tab' + (m===mode?' active':''));
   document.getElementById('csvCard').style.display = mode === 'align' ? '' : 'none';
+  // bilingual only available for ASR mode
+  document.getElementById('bilingualBatchWrap').style.display = mode === 'align' ? 'none' : '';
   renderBatchFileList();
 }
 
@@ -675,7 +697,6 @@ async function runBatch() {
 
   const btn = document.getElementById('btn-batch'); btn.disabled = true;
   batchResults = [];
-  setProcessing(true);
   document.getElementById('batchProgressWrap').style.display = 'block';
   document.getElementById('batchSummary').className = 'batch-summary';
   showStatus('batch','',`正在处理 0 / ${batchFiles.length}…`,true);
@@ -698,8 +719,10 @@ async function runBatch() {
       endpoint = '/align';
       srtName = file.name.replace(/\.[^.]+$/,'') + '_aligned.srt';
     } else {
+      const bilingual = document.getElementById('bilingual-batch').checked;
+      if (bilingual) fd.append('bilingual','true');
       endpoint = '/transcribe';
-      srtName = file.name.replace(/\.[^.]+$/,'') + '.srt';
+      srtName = file.name.replace(/\.[^.]+$/,'') + (bilingual ? '_bilingual' : '') + '.srt';
     }
 
     try {

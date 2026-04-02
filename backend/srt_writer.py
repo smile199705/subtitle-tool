@@ -19,3 +19,25 @@ def to_srt(segments: list) -> str:
         lines.append(seg['text'].strip())
         lines.append("")
     return "\n".join(lines)
+
+
+def to_srt_bilingual(bilingual_segments: list) -> str:
+    """Convert bilingual segments to SRT string with two lines per block.
+
+    Each segment: {start: float, end: float, text_orig: str, text_trans: str}
+    Output format:
+        1
+        00:00:00,000 --> 00:00:03,200
+        原文文本
+        English translation
+    """
+    lines = []
+    for i, seg in enumerate(bilingual_segments, 1):
+        lines.append(str(i))
+        lines.append(f"{format_time(seg['start'])} --> {format_time(seg['end'])}")
+        lines.append(seg['text_orig'].strip())
+        if seg.get('text_trans'):
+            lines.append(seg['text_trans'].strip())
+        lines.append("")
+    return "\n".join(lines)
+

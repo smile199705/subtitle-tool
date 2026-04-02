@@ -25,8 +25,9 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 sys.path.insert(0, str(Path(__file__).parent))
 from transcriber import transcribe_audio
 from aligner import align_audio_text
+from bilingual import transcribe_bilingual
 from segmenter import segment_words
-from srt_writer import to_srt
+from srt_writer import to_srt, to_srt_bilingual
 
 app = FastAPI(title='subtitle-tool', version='1.0.0')
 
@@ -64,17 +65,29 @@ def _save_srt(srt_text: str, stem: str, suffix: str = '') -> str:
 
 # ── Shared inference helpers ─────────────────────────────────────────────────
 
-async def _run_transcribe(audio_path: str, language: str, stem: str) -> dict:
+async def _run_transcribe(audio_path: str, language: str, stem: str, bilingual: bool = False) -> dict:
     loop = asyncio.get_event_loop()
-    words = await loop.run_in_executor(
-        None, partial(transcribe_audio, audio_path, language)
-    )
-    if not words:
-        raise ValueError('No speech detected')
-    segments = segment_words(words, language)
-    srt_text = to_srt(segments)
-    output_file = _save_srt(srt_text, stem)
-    return {'srt': srt_text, 'segments': segments, 'output_file': output_file}
+    if bilingual:
+        bi_segs = await loop.run_in_executor(
+            None, partial(transcribe_bilingual, audio_path, language)
+        )
+        if not bi_segs:
+            raise ValueError('No speech detected')
+        srt_text = to_srt_bilingual(bi_segs)
+        output_file = _save_srt(srt_text, stem, '_bilingual')
+        segments = [{'text': s['text_orig'], 'text_trans': s['text_trans'],
+                     'start': s['start'], 'end': s['end']} for s in bi_segs]
+        return {'srt': srt_text, 'segments': segments, 'output_file': output_file}
+    else:
+        words = await loop.run_in_executor(
+            None, partial(transcribe_audio, audio_path, language)
+        )
+        if not words:
+            raise ValueError('No speech detected')
+        segments = segment_words(words, language)
+        srt_text = to_srt(segments)
+        output_file = _save_srt(srt_text, stem)
+        return {'srt': srt_text, 'segments': segments, 'output_file': output_file}
 
 
 async def _run_align(audio_path: str, text: str, language: str, stem: str) -> dict:
@@ -110,6 +123,7 @@ def health():
 async def transcribe(
     audio: UploadFile = File(...),
     language: str = Form('en'),
+    bilingual: bool = Form(False),
 ):
     tmp_dir = tempfile.mkdtemp()
     try:
@@ -117,7 +131,7 @@ async def transcribe(
         with open(audio_path, 'wb') as f:
             shutil.copyfileobj(audio.file, f)
         stem = Path(audio.filename or 'audio').stem
-        result = await _run_transcribe(audio_path, language, stem)
+        result = await _run_transcribe(audio_path, language, stem, bilingual)
         return JSONResponse(result)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -155,6 +169,7 @@ async def align(
 async def job_transcribe(
     audio: UploadFile = File(...),
     language: str = Form('en'),
+    bilingual: bool = Form(False),
 ):
     """Submit an ASR job. Returns job_id immediately; poll /jobs/{job_id} for result."""
     job_id = _new_job()
@@ -171,7 +186,7 @@ async def job_transcribe(
         try:
             with open(audio_path, 'wb') as f:
                 f.write(audio_bytes)
-                result = await _run_transcribe(audio_path, language, stem)
+            result = await _run_transcribe(audio_path, language, stem, bilingual)
             _jobs[job_id].update(status='done', result=result)
         except Exception as e:
             _jobs[job_id].update(status='error', error=str(e))
@@ -202,7 +217,7 @@ async def job_align(
         try:
             with open(audio_path, 'wb') as f:
                 f.write(audio_bytes)
-                result = await _run_align(audio_path, text, language, stem)
+            result = await _run_align(audio_path, text, language, stem)
             _jobs[job_id].update(status='done', result=result)
         except Exception as e:
             _jobs[job_id].update(status='error', error=str(e))
