@@ -28,20 +28,6 @@ from aligner import align_audio_text
 from segmenter import segment_words
 from srt_writer import to_srt
 
-
-_VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m2ts', '.ts', '.rmvb', '.rm'}
-
-def _maybe_extract_audio(audio_path: str, tmp_dir: str) -> str:
-    """If the file is a video format, extract audio to MP3 via ffmpeg and return the new path."""
-    if Path(audio_path).suffix.lower() not in _VIDEO_EXTS:
-        return audio_path
-    mp3_path = os.path.join(tmp_dir, Path(audio_path).stem + '.mp3')
-    ret = os.system(f'ffmpeg -y -i "{audio_path}" -vn -ar 44100 -ac 2 -b:a 192k "{mp3_path}" > /dev/null 2>&1')
-    if ret != 0:
-        raise RuntimeError('ffmpeg failed to extract audio. Make sure ffmpeg is installed: brew install ffmpeg')
-    print(f"[server] video audio extracted to MP3: {mp3_path}")
-    return mp3_path
-
 app = FastAPI(title='subtitle-tool', version='1.0.0')
 
 app.add_middleware(
@@ -130,7 +116,6 @@ async def transcribe(
         audio_path = os.path.join(tmp_dir, audio.filename or 'audio.wav')
         with open(audio_path, 'wb') as f:
             shutil.copyfileobj(audio.file, f)
-        audio_path = _maybe_extract_audio(audio_path, tmp_dir)
         stem = Path(audio.filename or 'audio').stem
         result = await _run_transcribe(audio_path, language, stem)
         return JSONResponse(result)
@@ -153,7 +138,6 @@ async def align(
         audio_path = os.path.join(tmp_dir, audio.filename or 'audio.wav')
         with open(audio_path, 'wb') as f:
             shutil.copyfileobj(audio.file, f)
-        audio_path = _maybe_extract_audio(audio_path, tmp_dir)
         stem = Path(audio.filename or 'audio').stem
         result = await _run_align(audio_path, text, language, stem)
         return JSONResponse(result)
@@ -187,8 +171,7 @@ async def job_transcribe(
         try:
             with open(audio_path, 'wb') as f:
                 f.write(audio_bytes)
-            audio_path = _maybe_extract_audio(audio_path, tmp_dir)
-            result = await _run_transcribe(audio_path, language, stem)
+                result = await _run_transcribe(audio_path, language, stem)
             _jobs[job_id].update(status='done', result=result)
         except Exception as e:
             _jobs[job_id].update(status='error', error=str(e))
@@ -219,8 +202,7 @@ async def job_align(
         try:
             with open(audio_path, 'wb') as f:
                 f.write(audio_bytes)
-            audio_path = _maybe_extract_audio(audio_path, tmp_dir)
-            result = await _run_align(audio_path, text, language, stem)
+                result = await _run_align(audio_path, text, language, stem)
             _jobs[job_id].update(status='done', result=result)
         except Exception as e:
             _jobs[job_id].update(status='error', error=str(e))

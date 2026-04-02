@@ -2,7 +2,9 @@
 aligner.py — Forced alignment using WhisperX (en + zh).
 """
 from __future__ import annotations
+import shutil
 import torch
+from media_utils import extract_audio_if_video
 
 
 def _get_device() -> str:
@@ -36,29 +38,34 @@ def align_audio_text(audio_path: str, text: str, language: str = 'en') -> list[d
     device = _get_device()
     print(f"[aligner] device={device}, language={lang}")
 
-    duration = get_audio_duration(audio_path)
+    audio_path, tmp_dir = extract_audio_if_video(audio_path)
+    try:
+        duration = get_audio_duration(audio_path)
 
-    # Build a pseudo-segment spanning the whole file
-    pseudo_segments = [{'text': text, 'start': 0.0, 'end': duration}]
+        # Build a pseudo-segment spanning the whole file
+        pseudo_segments = [{'text': text, 'start': 0.0, 'end': duration}]
 
-    # Load alignment model
-    align_model, align_metadata = whisperx.load_align_model(
-        language_code=lang,
-        device=device,
-    )
+        # Load alignment model
+        align_model, align_metadata = whisperx.load_align_model(
+            language_code=lang,
+            device=device,
+        )
 
-    # Load audio
-    audio = whisperx.load_audio(audio_path)
+        # Load audio
+        audio = whisperx.load_audio(audio_path)
 
-    # Align
-    result = whisperx.align(
-        pseudo_segments,
-        align_model,
-        align_metadata,
-        audio,
-        device,
-        return_char_alignments=False,
-    )
+        # Align
+        result = whisperx.align(
+            pseudo_segments,
+            align_model,
+            align_metadata,
+            audio,
+            device,
+            return_char_alignments=False,
+        )
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     words = []
     for seg in result.get('segments', []):

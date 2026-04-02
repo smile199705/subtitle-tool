@@ -2,6 +2,8 @@
 transcriber.py — ASR using mlx-whisper (M1 optimised) with fallback to openai-whisper.
 """
 from __future__ import annotations
+import shutil
+from media_utils import extract_audio_if_video
 
 
 def transcribe_audio(audio_path: str, language: str = 'en') -> list[dict]:
@@ -16,9 +18,14 @@ def transcribe_audio(audio_path: str, language: str = 'en') -> list[dict]:
     elif lang in ('en', 'english'):
         lang = 'en'
 
-    words = _try_mlx(audio_path, lang)
-    if words is None:
-        words = _try_openai_whisper(audio_path, lang)
+    audio_path, tmp_dir = extract_audio_if_video(audio_path)
+    try:
+        words = _try_mlx(audio_path, lang)
+        if words is None:
+            words = _try_openai_whisper(audio_path, lang)
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
     return words
 
 
