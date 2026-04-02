@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>字幕生产工具</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3d;
+    --accent: #7c6af7;
+    --accent-hover: #9b8dff;
+    --text: #e8e8f0;
+    --muted: #6b6e85;
+    --ok: #4caf82;
+    --err: #e05c6e;
+    --warn: #f0a53a;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, 'SF Pro Text', 'Segoe UI', sans-serif;
+    font-size: 14px; min-height: 100vh;
+  }
+  .layout { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  /* Header */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .title { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
+  .title span { color: var(--accent); }
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 5px 14px; border-radius: 20px; font-size: 12px; color: var(--muted);
+    cursor: pointer; user-select: none;
+  }
+  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background .3s; }
+  .status-pill.ok  .dot  { background: var(--ok); }
+  .status-pill.ok  .label { color: var(--ok); }
+  .status-pill.err .dot  { background: var(--err); }
+  .status-pill.err .label { color: var(--err); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 4px; margin-bottom: 22px; width: fit-content; }
+  .tab { padding: 8px 20px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500;
+    color: var(--muted); transition: background .2s, color .2s; }
+  .tab.active { background: var(--accent); color: #fff; }
+  .tab:not(.active):hover { background: var(--border); color: var(--text); }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; margin-bottom: 16px; }
+  .card-label { font-size: 12px; color: var(--muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .5px; }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 36px 20px; text-align: center; cursor: pointer;
+    transition: border-color .2s, background .2s; position: relative; overflow: hidden;
+  }
+  .drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: rgba(124,106,247,.06); }
+  .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .drop-icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-hint { color: var(--muted); font-size: 13px; }
+  .drop-hint strong { color: var(--text); }
+  .file-name { color: var(--accent); font-size: 13px; margin-top: 8px; font-weight: 500; }
+
+  /* Lang */
+  .lang-row { display: flex; gap: 8px; }
+  .lang-btn { flex: 1; padding: 9px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--muted); cursor: pointer; font-size: 13px;
+    transition: border-color .2s, color .2s, background .2s; }
+  .lang-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(124,106,247,.08); }
+
+  /* Textarea */
+  textarea { width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 7px; color: var(--text); padding: 12px; font-size: 13px;
+    resize: vertical; outline: none; font-family: inherit; line-height: 1.6; transition: border-color .2s; }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--muted); }
+
+  /* Buttons */
+  .btn-process { width: 100%; padding: 13px; border-radius: var(--radius); background: var(--accent);
+    border: none; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: background .2s, transform .1s; letter-spacing: .2px; }
+  .btn-process:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-process:active:not(:disabled) { transform: scale(.98); }
+  .btn-process:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-dl { padding: 7px 16px; border-radius: 6px; background: var(--ok);
+    border: none; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+  .btn-dl:hover { opacity: .85; }
+
+  /* Status */
+  .proc-status { display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+    border-radius: 7px; background: rgba(124,106,247,.08); border: 1px solid rgba(124,106,247,.2);
+    font-size: 13px; color: var(--accent); margin-top: 12px; }
+  .proc-status.hidden { display: none; }
+  .proc-status.error   { background: rgba(224,92,110,.08); border-color: rgba(224,92,110,.2); color: var(--err); }
+  .proc-status.success { background: rgba(76,175,130,.08);  border-color: rgba(76,175,130,.2);  color: var(--ok); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { width: 14px; height: 14px; border: 2px solid currentColor;
+    border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+
+  /* Single result */
+  .result-card { display: none; }
+  .result-card.visible { display: block; }
+  .result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .result-title { font-size: 13px; font-weight: 600; }
+  .srt-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+    padding: 14px; font-family: 'SF Mono','Fira Code',monospace; font-size: 12px;
+    color: var(--text); white-space: pre-wrap; max-height: 340px; overflow-y: auto; line-height: 1.7; }
+  .saved-hint { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .saved-hint span { color: var(--ok); }
+
+  /* ── Batch ── */
+  .sub-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .sub-tab { padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
+    color: var(--muted); border: 1px solid var(--border); background: var(--bg); transition: all .2s; }
+  .sub-tab.active { background: rgba(124,106,247,.15); border-color: var(--accent); color: var(--accent); }
+
+  /* CSV/Excel upload card */
+  .csv-drop {
+    border: 2px dashed var(--border); border-radius: 8px; padding: 20px;
+    text-align: center; cursor: pointer; position: relative;
+    transition: border-color .2s, background .2s;
+  }
+  .csv-drop:hover, .csv-drop.over { border-color: var(--warn); background: rgba(240,165,58,.05); }
+  .csv-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .csv-loaded { margin-top: 12px; }
+  .csv-info { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: rgba(240,165,58,.1); border: 1px solid rgba(240,165,58,.3);
+    border-radius: 6px; font-size: 12px; color: var(--warn); }
+
+  /* Mapping table */
+  .map-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+  .map-table th { text-align: left; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); font-weight: 500; }
+  .map-table td { padding: 7px 10px; border-bottom: 1px solid rgba(42,45,61,.6); vertical-align: top; }
+  .map-table tr:last-child td { border-bottom: none; }
+  .map-table .td-file { color: var(--text); font-family: 'SF Mono','Fira Code',monospace; }
+  .map-table .td-text { color: var(--muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-ok   { background: rgba(76,175,130,.15); color: var(--ok); }
+  .badge-warn { background: rgba(240,165,58,.15);  color: var(--warn); }
+  .badge-err  { background: rgba(224,92,110,.15);  color: var(--err); }
+
+  /* Batch file list */
+  .batch-progress-wrap { background: var(--border); border-radius: 4px; height: 6px; margin: 14px 0 4px; overflow: hidden; }
+  .batch-progress-bar  { height: 100%; background: var(--accent); border-radius: 4px; transition: width .3s ease; width: 0%; }
+  .batch-progress-label { font-size: 12px; color: var(--muted); text-align: right; }
+
+  .batch-file-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .batch-file-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px; }
+  .bfi-name  { flex: 1; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bfi-map   { flex-shrink: 0; }
+  .bfi-status { flex-shrink: 0; font-size: 11px; min-width: 80px; text-align: right; }
+  .bfi-status.pending { color: var(--muted); }
+  .bfi-status.running { color: var(--accent); display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+  .bfi-status.done    { color: var(--ok); }
+  .bfi-status.error   { color: var(--err); }
+  .bfi-dl { padding: 3px 10px; border-radius: 4px; background: var(--ok);
+    border: none; color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; display: none; }
+  .bfi-dl:hover { opacity: .85; }
+  .bfi-dl.visible { display: inline-block; }
+  .bfi-rm { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; flex-shrink: 0; }
+
+  /* Batch summary */
+  .batch-summary { display: none; margin-top: 16px; padding: 12px 16px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    font-size: 13px; align-items: center; justify-content: space-between; }
+  .batch-summary.visible { display: flex; }
+  .batch-summary-text { color: var(--muted); }
+  .batch-summary-text strong { color: var(--ok); }
+  .btn-dl-all { padding: 8px 18px; border-radius: 6px; background: var(--accent);
+    border: none; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .2s; }
+  .btn-dl-all:hover { background: var(--accent-hover); }
+
+  /* Template hint */
+  .template-hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .template-hint a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .template-hint a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="title">字幕<span>生产</span>工具</div>
+    <div class="status-pill" id="statusPill" onclick="checkHealth()">
+      <div class="dot"></div>
+      <span class="label" id="statusLabel">检查中...</span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" id="tab-asr"   onclick="switchTab('asr')">🎙 语音识别</div>
+    <div class="tab"        id="tab-align" onclick="switchTab('align')">📝 语音+文本对齐</div>
+    <div class="tab"        id="tab-batch" onclick="switchTab('batch')">📦 批量处理</div>
+  </div>
+
+  <!-- ─── ASR ─── -->
+  <div id="panel-asr">
+    <div class="card">
+      <div class="card-label">音频文件</div>
+      <div class="drop-zone" id="dropZone-asr"
+           ondragover="onDragOver(event,'asr')" ondragleave="onDragLeave('asr')" ondrop="onDrop(event,'asr')">
+        <input type="file" id="fileInput-asr" accept="audio/*,video/*" onchange="onFileSelect(event,'asr')">
+        <div class="drop-icon">🎵</div>
+        <div class="drop-hint"><strong>点击上传</strong> 或拖拽音频文件至此</div>
+        <div class="drop-hint" style="margin-top:4px">支持 MP3 · WAV · M4A · MP4 · 等</div>
+        <div class="file-name" id="fileName-asr"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">语言</div>
+      <div class="lang-row">
+        <button class="lang-btn active" id="lang-asr-en" onclick="setLang('asr','en')">English</button>
+        <button class="lang-btn"        id="lang-asr-zh" onclick="setLang('asr','zh')">中文</button>
+      </div>
+    </div>
+    <button class="btn-process" id="btn-asr" onclick="runASR()">开始识别 →</button>
+    <div class="proc-status hidden" id="status-asr"></div>
+  </div>
+
+  <!-- ─── Align ─── -->
+  <div id="panel-align" style="display:none">
+    <div class="card">
+      <div class="card-label">音频文件</div>
+      <div class="drop-zone" id="dropZone-align"
+           ondragover="onDragOver(event,'align')" ondragleave="onDragLeave('align')" ondrop="onDrop(event,'align')">
+        <input type="file" id="fileInput-align" accept="audio/*,video/*" onchange="onFileSelect(event,'align')">
+        <div class="drop-icon">🎵</div>
+        <div class="drop-hint"><strong>点击上传</strong> 或拖拽音频文件至此</div>
+        <div class="file-name" id="fileName-align"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">已知文本（将与音频精准对齐）</div>
+      <textarea id="alignText" rows="6"
+        placeholder="在此粘贴完整文稿...&#10;&#10;例如：&#10;Hello world. This is a subtitle tool."></textarea>
+    </div>
+    <div class="card">
+      <div class="card-label">语言</div>
+      <div class="lang-row">
+        <button class="lang-btn active" id="lang-align-en" onclick="setLang('align','en')">English</button>
+        <button class="lang-btn"        id="lang-align-zh" onclick="setLang('align','zh')">中文</button>
+      </div>
+    </div>
+    <button class="btn-process" id="btn-align" onclick="runAlign()">开始对齐 →</button>
+    <div class="proc-status hidden" id="status-align"></div>
+  </div>
+
+  <!-- ─── Batch ─── -->
+  <div id="panel-batch" style="display:none">
+
+    <!-- Sub-mode + language -->
+    <div class="card">
+      <div class="card-label">处理模式</div>
+      <div class="sub-tabs">
+        <div class="sub-tab active" id="btab-asr"   onclick="setBatchMode('asr')">🎙 批量语音识别</div>
+        <div class="sub-tab"        id="btab-align" onclick="setBatchMode('align')">📝 批量语音+文本对齐</div>
+      </div>
+      <div class="card-label" style="margin-top:14px">语言</div>
+      <div class="lang-row">
+        <button class="lang-btn active" id="lang-batch-en" onclick="setLang('batch','en')">English</button>
+        <button class="lang-btn"        id="lang-batch-zh" onclick="setLang('batch','zh')">中文</button>
+      </div>
+    </div>
+
+    <!-- ① CSV / Excel 映射表 (align only) -->
+    <div class="card" id="csvCard" style="display:none">
+      <div class="card-label">文稿映射表（CSV 或 Excel）</div>
+      <div class="csv-drop" id="csvDrop"
+           ondragover="onCsvDragOver(event)" ondragleave="onCsvDragLeave()"
+           ondrop="onCsvDrop(event)">
+        <input type="file" id="csvInput" accept=".csv,.xlsx,.xls" onchange="onCsvSelect(event)">
+        <div style="font-size:24px;margin-bottom:6px">📊</div>
+        <div class="drop-hint"><strong>点击上传</strong> 或拖拽 CSV / Excel 文件</div>
+        <div class="drop-hint" style="margin-top:4px">必须包含两列：<code style="color:var(--warn)">filename</code> 和 <code style="color:var(--warn)">text</code></div>
+      </div>
+
+      <!-- Loaded state -->
+      <div class="csv-loaded" id="csvLoaded" style="display:none">
+        <div class="csv-info">
+          <span>📎</span>
+          <span id="csvFileName"></span>
+          <span id="csvRowCount" style="margin-left:auto"></span>
+          <button onclick="clearCsv()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;margin-left:8px">✕ 重新上传</button>
+        </div>
+        <!-- Mapping preview table -->
+        <div id="csvMapWrap"></div>
+      </div>
+
+      <!-- Template download hint -->
+      <div class="template-hint">
+        没有模板？<a onclick="downloadCsvTemplate()">下载 CSV 模板</a>
+      </div>
+    </div>
+
+    <!-- ② 音频文件（多选） -->
+    <div class="card">
+      <div class="card-label">音频文件（可多选）</div>
+      <div class="drop-zone" id="dropZone-batch"
+           ondragover="onDragOver(event,'batch')" ondragleave="onDragLeave('batch')"
+           ondrop="onDropBatch(event)">
+        <input type="file" id="fileInput-batch" accept="audio/*,video/*" multiple
+               onchange="onBatchFileSelect(event)">
+        <div class="drop-icon">📂</div>
+        <div class="drop-hint"><strong>点击选择多个文件</strong> 或拖拽至此</div>
+        <div class="drop-hint" style="margin-top:4px">支持 MP3 · WAV · M4A · MP4 · 等</div>
+      </div>
+      <div class="batch-file-list" id="batchFileList"></div>
+    </div>
+
+    <!-- ③ Progress -->
+    <div id="batchProgressWrap" style="display:none" class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:13px;font-weight:600">处理进度</span>
+        <span id="batchProgressLabel" class="batch-progress-label">0 / 0</span>
+      </div>
+      <div class="batch-progress-wrap"><div class="batch-progress-bar" id="batchProgressBar"></div></div>
+    </div>
+
+    <button class="btn-process" id="btn-batch" onclick="runBatch()">开始批量处理 →</button>
+    <div class="proc-status hidden" id="status-batch"></div>
+
+    <!-- Summary -->
+    <div class="batch-summary" id="batchSummary">
+      <div class="batch-summary-text" id="batchSummaryText"></div>
+      <button class="btn-dl-all" onclick="downloadAll()">下载全部 SRT</button>
+    </div>
+  </div>
+
+  <!-- Single result -->
+  <div class="card result-card" id="result-card" style="margin-top:20px">
+    <div class="result-header">
+      <div class="result-title">生成结果</div>
+      <button class="btn-dl" onclick="downloadSRT()">下载 SRT</button>
+    </div>
+    <div class="srt-preview" id="srtPreview"></div>
+    <div class="saved-hint" id="savedHint"></div>
+  </div>
+
+</div><!-- /layout -->
+
+<script>
+const API = 'http://127.0.0.1:8765';
+let currentMode = 'asr';
+let langState  = { asr: 'en', align: 'en', batch: 'en' };
+let fileState  = { asr: null, align: null };
+let lastSRT = '', lastFileName = 'subtitle.srt';
+
+// Batch state
+let batchMode    = 'asr';
+let batchFiles   = [];   // File[]
+let batchResults = [];   // {name,srt,outputFile,ok,error?}[]
+// CSV/Excel map: filename (lowercase, no path) → text
+let csvTextMap   = {};   // { 'ep1.mp3': '...' }
+let csvLoaded    = false;
+
+// ─── Health ───
+async function checkHealth() {
+  const pill = document.getElementById('statusPill');
+  const label = document.getElementById('statusLabel');
+  try {
+    const r = await fetch(API + '/health', { signal: AbortSignal.timeout(8000) });
+    if (r.ok) { pill.className = 'status-pill ok'; label.textContent = '服务已连接'; }
+    else throw 0;
+  } catch {
+    pill.className = 'status-pill err'; label.textContent = '服务未连接';
+  }
+}
+checkHealth(); setInterval(checkHealth, 5000);
+
+// ─── Tabs ───
+function switchTab(mode) {
+  currentMode = mode;
+  ['asr','align','batch'].forEach(m => {
+    document.getElementById(`panel-${m}`).style.display = m === mode ? '' : 'none';
+    document.getElementById(`tab-${m}`).className = 'tab' + (m === mode ? ' active' : '');
+  });
+  if (mode !== 'batch') hideResult();
+}
+
+// ─── Language ───
+function setLang(mode, lang) {
+  langState[mode] = lang;
+  ['en','zh'].forEach(l =>
+    document.getElementById(`lang-${mode}-${l}`).className = 'lang-btn' + (l === lang ? ' active' : ''));
+}
+
+// ─── Single-file utils ───
+function onFileSelect(e, mode) { const f = e.target.files[0]; if (f) setFile(mode, f); }
+function onDragOver(e, mode) { e.preventDefault(); document.getElementById(`dropZone-${mode}`).classList.add('over'); }
+function onDragLeave(mode) { document.getElementById(`dropZone-${mode}`).classList.remove('over'); }
+function onDrop(e, mode) {
+  e.preventDefault(); document.getElementById(`dropZone-${mode}`).classList.remove('over');
+  const f = e.dataTransfer.files[0]; if (f) setFile(mode, f);
+}
+function setFile(mode, file) {
+  fileState[mode] = file;
+  document.getElementById(`fileName-${mode}`).textContent = '📎 ' + file.name;
+}
+function showStatus(mode, type, msg, spin=false) {
+  const el = document.getElementById(`status-${mode}`);
+  el.className = `proc-status ${type}`;
+  el.innerHTML = spin ? `<div class="spinner"></div><span>${msg}</span>` : `<span>${msg}</span>`;
+}
+function hideResult() { document.getElementById('result-card').className = 'card result-card'; }
+function showResult(srt, outputFile) {
+  lastSRT = srt;
+  document.getElementById('srtPreview').textContent = srt;
+  document.getElementById('result-card').className = 'card result-card visible';
+  if (outputFile)
+    document.getElementById('savedHint').innerHTML = `<span>✓</span> 已保存至：${outputFile}`;
+}
+
+// ─── ASR ───
+async function runASR() {
+  const file = fileState.asr; if (!file) { alert('请先选择音频文件'); return; }
+  const btn = document.getElementById('btn-asr'); btn.disabled = true; hideResult();
+  showStatus('asr','','正在识别，请稍候...',true);
+  lastFileName = file.name.replace(/\.[^.]+$/,'') + '.srt';
+  const fd = new FormData(); fd.append('audio',file); fd.append('language',langState.asr);
+  try {
+    const r = await fetch(API+'/transcribe',{method:'POST',body:fd});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail||r.statusText);
+    showStatus('asr','success','识别完成！'); showResult(d.srt, d.output_file);
+  } catch(e) { showStatus('asr','error','错误：'+e.message); }
+  finally { btn.disabled = false; }
+}
+
+// ─── Align ───
+async function runAlign() {
+  const file = fileState.align; const text = document.getElementById('alignText').value.trim();
+  if (!file) { alert('请先选择音频文件'); return; }
+  if (!text)  { alert('请输入需要对齐的文本'); return; }
+  const btn = document.getElementById('btn-align'); btn.disabled = true; hideResult();
+  showStatus('align','','正在强制对齐，请稍候...',true);
+  lastFileName = file.name.replace(/\.[^.]+$/,'') + '_aligned.srt';
+  const fd = new FormData(); fd.append('audio',file); fd.append('text',text); fd.append('language',langState.align);
+  try {
+    const r = await fetch(API+'/align',{method:'POST',body:fd});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail||r.statusText);
+    showStatus('align','success','对齐完成！'); showResult(d.srt, d.output_file);
+  } catch(e) { showStatus('align','error','错误：'+e.message); }
+  finally { btn.disabled = false; }
+}
+
+// ─── Download ───
+function downloadSRT() { if (lastSRT) triggerDownload(lastSRT, lastFileName); }
+function triggerDownload(text, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));
+  a.download = filename; a.click();
+}
+
+// ════════════════════════════════════════
+// ─── BATCH ───
+// ════════════════════════════════════════
+
+function setBatchMode(mode) {
+  batchMode = mode;
+  ['asr','align'].forEach(m =>
+    document.getElementById(`btab-${m}`).className = 'sub-tab' + (m===mode?' active':''));
+  document.getElementById('csvCard').style.display = mode === 'align' ? '' : 'none';
+  renderBatchFileList();
+}
+
+// ── CSV / Excel parsing ──
+
+function onCsvDragOver(e) { e.preventDefault(); document.getElementById('csvDrop').classList.add('over'); }
+function onCsvDragLeave() { document.getElementById('csvDrop').classList.remove('over'); }
+function onCsvDrop(e) { e.preventDefault(); document.getElementById('csvDrop').classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) loadCsvFile(f); }
+function onCsvSelect(e) { const f = e.target.files[0]; if (f) loadCsvFile(f); }
+
+function clearCsv() {
+  csvTextMap = {}; csvLoaded = false;
+  document.getElementById('csvLoaded').style.display = 'none';
+  document.getElementById('csvDrop').style.display = '';
+  document.getElementById('csvInput').value = '';
+  renderBatchFileList();
+}
+
+async function loadCsvFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  try {
+    if (ext === 'csv') {
+      const text = await file.text();
+      csvTextMap = parseCsv(text);
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      csvTextMap = await parseExcel(file);
+    } else {
+      alert('请上传 .csv 或 .xlsx 文件'); return;
+    }
+    csvLoaded = true;
+    showCsvLoaded(file.name, Object.keys(csvTextMap).length);
+    renderBatchFileList();
+  } catch(e) {
+    alert('解析失败：' + e.message);
+  }
+}
+
+function parseCsv(raw) {
+  const lines = raw.trim().split(/\r?\n/);
+  if (!lines.length) return {};
+  // parse header
+  const header = parseCsvRow(lines[0]).map(h => h.trim().toLowerCase());
+  const filenameCol = header.findIndex(h => ['filename','file','name','音频','文件名'].includes(h));
+  const textCol = header.findIndex(h => ['text','transcript','content','文稿','文本','字幕'].includes(h));
+  // fallback: col 0 = filename, col 1 = text
+  const fc = filenameCol >= 0 ? filenameCol : 0;
+  const tc = textCol >= 0 ? textCol : 1;
+  const map = {};
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvRow(lines[i]);
+    const fname = (cols[fc] || '').trim();
+    const txt   = (cols[tc] || '').trim();
+    if (fname && txt) map[fname.toLowerCase()] = txt;
+  }
+  return map;
+}
+
+function parseCsvRow(line) {
+  // Handles quoted fields
+  const result = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { result.push(cur); cur = ''; }
+    else cur += c;
+  }
+  result.push(cur);
+  return result;
+}
+
+async function parseExcel(file) {
+  // Dynamically load SheetJS
+  if (!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = () => reject(new Error('SheetJS 加载失败（需要网络）'));
+      document.head.appendChild(s);
+    });
+  }
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if (rows.length < 2) return {};
+  const header = rows[0].map(h => String(h).trim().toLowerCase());
+  const fc = header.findIndex(h => ['filename','file','name','音频','文件名'].includes(h));
+  const tc = header.findIndex(h => ['text','transcript','content','文稿','文本','字幕'].includes(h));
+  const fc2 = fc >= 0 ? fc : 0, tc2 = tc >= 0 ? tc : 1;
+  const map = {};
+  for (let i = 1; i < rows.length; i++) {
+    const fname = String(rows[i][fc2]||'').trim();
+    const txt   = String(rows[i][tc2]||'').trim();
+    if (fname && txt) map[fname.toLowerCase()] = txt;
+  }
+  return map;
+}
+
+function showCsvLoaded(filename, count) {
+  document.getElementById('csvDrop').style.display = 'none';
+  document.getElementById('csvLoaded').style.display = '';
+  document.getElementById('csvFileName').textContent = filename;
+  document.getElementById('csvRowCount').textContent = `共 ${count} 条映射`;
+}
+
+function renderCsvMapTable() {
+  if (!csvLoaded || !batchFiles.length) { document.getElementById('csvMapWrap').innerHTML = ''; return; }
+  const rows = batchFiles.map(f => {
+    const key = f.name.toLowerCase();
+    const text = csvTextMap[key];
+    if (text) {
+      const preview = text.length > 60 ? text.slice(0,60)+'…' : text;
+      return `<tr>
+        <td class="td-file">${esc(f.name)}</td>
+        <td class="td-text" title="${esc(text)}">${esc(preview)}</td>
+        <td><span class="badge badge-ok">✓ 已匹配</span></td>
+      </tr>`;
+    } else {
+      return `<tr>
+        <td class="td-file">${esc(f.name)}</td>
+        <td class="td-text" style="color:var(--err)">— 未找到映射</td>
+        <td><span class="badge badge-err">✗ 缺失</span></td>
+      </tr>`;
+    }
+  }).join('');
+  document.getElementById('csvMapWrap').innerHTML = `
+    <table class="map-table">
+      <thead><tr><th>音频文件</th><th>文稿预览</th><th>状态</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Batch files ──
+
+function onBatchFileSelect(e) { addBatchFiles(Array.from(e.target.files)); }
+function onDropBatch(e) {
+  e.preventDefault(); document.getElementById('dropZone-batch').classList.remove('over');
+  addBatchFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('audio/')||f.type.startsWith('video/')));
+}
+function addBatchFiles(files) {
+  const existing = new Set(batchFiles.map(f => f.name));
+  files.forEach(f => { if (!existing.has(f.name)) batchFiles.push(f); });
+  renderBatchFileList(); resetBatchState();
+}
+function removeBatchFile(idx) { batchFiles.splice(idx,1); renderBatchFileList(); resetBatchState(); }
+
+function resetBatchState() {
+  batchResults = [];
+  document.getElementById('batchProgressWrap').style.display = 'none';
+  document.getElementById('batchSummary').className = 'batch-summary';
+  document.getElementById('status-batch').className = 'proc-status hidden';
+}
+
+function renderBatchFileList() {
+  const list = document.getElementById('batchFileList');
+  if (!batchFiles.length) { list.innerHTML = ''; renderCsvMapTable(); return; }
+  list.innerHTML = batchFiles.map((f,i) => {
+    const key = f.name.toLowerCase();
+    let mapBadge = '';
+    if (batchMode === 'align') {
+      mapBadge = csvLoaded
+        ? (csvTextMap[key]
+            ? `<span class="badge badge-ok" style="font-size:10px">✓ 有文稿</span>`
+            : `<span class="badge badge-err" style="font-size:10px">✗ 无文稿</span>`)
+        : `<span class="badge badge-warn" style="font-size:10px">待上传CSV</span>`;
+    }
+    return `<div class="batch-file-item" id="bitem-${i}">
+      <span style="font-size:15px">🎵</span>
+      <span class="bfi-name" title="${esc(f.name)}">${esc(f.name)}</span>
+      <span class="bfi-map">${mapBadge}</span>
+      <span class="bfi-status pending" id="bstatus-${i}">待处理</span>
+      <button class="bfi-dl" id="bdl-${i}" onclick="downloadBatchFile(${i})">下载</button>
+      <button class="bfi-rm" onclick="removeBatchFile(${i})" title="移除">✕</button>
+    </div>`;
+  }).join('');
+  renderCsvMapTable();
+}
+
+function setBfiStatus(i, type, msg) {
+  const el = document.getElementById(`bstatus-${i}`); if (!el) return;
+  if (type === 'running') {
+    el.className = 'bfi-status running';
+    el.innerHTML = `<div class="spinner" style="width:10px;height:10px;border-width:1.5px"></div>${msg}`;
+  } else {
+    el.className = `bfi-status ${type}`; el.textContent = msg;
+  }
+}
+function updateProgress(done, total) {
+  document.getElementById('batchProgressBar').style.width = `${total?Math.round(done/total*100):0}%`;
+  document.getElementById('batchProgressLabel').textContent = `${done} / ${total}`;
+}
+
+async function runBatch() {
+  if (!batchFiles.length) { alert('请先选择文件'); return; }
+
+  // Validate align: need CSV loaded + all files mapped
+  if (batchMode === 'align') {
+    if (!csvLoaded) { alert('请先上传 CSV 或 Excel 文稿映射表'); return; }
+    const missing = batchFiles.filter(f => !csvTextMap[f.name.toLowerCase()]);
+    if (missing.length) {
+      alert(`以下文件在映射表中未找到文稿，请补充后重试：\n${missing.map(f=>f.name).join('\n')}`);
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btn-batch'); btn.disabled = true;
+  batchResults = [];
+  setProcessing(true);
+  document.getElementById('batchProgressWrap').style.display = 'block';
+  document.getElementById('batchSummary').className = 'batch-summary';
+  showStatus('batch','',`正在处理 0 / ${batchFiles.length}…`,true);
+  updateProgress(0, batchFiles.length);
+
+  let doneCount = 0, errCount = 0;
+
+  for (let i = 0; i < batchFiles.length; i++) {
+    const file = batchFiles[i];
+    setBfiStatus(i,'running','处理中...');
+    showStatus('batch','',`正在处理 ${i+1} / ${batchFiles.length}：${file.name}`,true);
+
+    const fd = new FormData();
+    fd.append('audio', file);
+    fd.append('language', langState.batch);
+
+    let endpoint, srtName;
+    if (batchMode === 'align') {
+      fd.append('text', csvTextMap[file.name.toLowerCase()]);
+      endpoint = '/align';
+      srtName = file.name.replace(/\.[^.]+$/,'') + '_aligned.srt';
+    } else {
+      endpoint = '/transcribe';
+      srtName = file.name.replace(/\.[^.]+$/,'') + '.srt';
+    }
+
+    try {
+      const r = await fetch(API + endpoint, { method:'POST', body:fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.statusText);
+      batchResults.push({ name:srtName, srt:d.srt, outputFile:d.output_file, ok:true });
+      setBfiStatus(i,'done','✓ 完成');
+      document.getElementById(`bdl-${i}`).className = 'bfi-dl visible';
+      doneCount++;
+    } catch(e) {
+      batchResults.push({ name:srtName, srt:null, error:e.message, ok:false });
+      setBfiStatus(i,'error','✗ ' + e.message);
+      errCount++;
+    }
+    updateProgress(i+1, batchFiles.length);
+  }
+
+  btn.disabled = false;
+  const total = batchFiles.length;
+  if (errCount === 0) showStatus('batch','success',`全部完成！共 ${total} 个文件`);
+  else showStatus('batch', errCount===total?'error':'', `完成 ${doneCount} 个，失败 ${errCount} 个`);
+
+  document.getElementById('batchSummary').className = 'batch-summary visible';
+  document.getElementById('batchSummaryText').innerHTML =
+    `共处理 <strong>${total}</strong> 个文件，成功 <strong>${doneCount}</strong> 个`;
+}
+
+function downloadBatchFile(i) { const r = batchResults[i]; if (r?.srt) triggerDownload(r.srt, r.name); }
+function downloadAll() {
+  batchResults.filter(r=>r.ok).forEach((r,i) => setTimeout(()=>triggerDownload(r.srt,r.name), i*150));
+}
+
+// ─── CSV Template ───
+function downloadCsvTemplate() {
+  const csv = 'filename,text\nepisode1.mp3,Hello world. This is the transcript for episode one.\nepisode2.mp3,第二集的文字稿在这里。\n';
+  triggerDownload(csv, 'subtitle_template.csv');
+}
+
+// ─── Helpers ───
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

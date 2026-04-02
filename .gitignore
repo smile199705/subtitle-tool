@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Model cache (large files, not tracked)
+.cache/
+
+# Runtime / temp
+*.log
+/tmp/
+.server.pid
+*.tmp
+
+# Output (generated SRT files)
+output/*.srt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
